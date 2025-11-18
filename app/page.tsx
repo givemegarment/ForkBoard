@@ -1,12 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArbitrageOpportunity } from '@/lib/types'
+import { ArbitrageOpportunity, PolymarketStrategyOpportunity } from '@/lib/types'
 import OpportunitiesTable from '@/components/OpportunitiesTable'
+import PolymarketOpportunitiesTable from '@/components/PolymarketOpportunitiesTable'
+
+type TabType = 'cross-platform' | 'polymarket-only'
 
 export default function Home() {
+  const [activeTab, setActiveTab] = useState<TabType>('polymarket-only')
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([])
+  const [polymarketOpportunities, setPolymarketOpportunities] = useState<PolymarketStrategyOpportunity[]>([])
   const [loading, setLoading] = useState(true)
+  const [polymarketLoading, setPolymarketLoading] = useState(true)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -28,13 +34,33 @@ export default function Home() {
     }
   }
 
+  const fetchPolymarketOpportunities = async () => {
+    try {
+      setError(null)
+      const response = await fetch('/api/polymarket-opportunities')
+      if (!response.ok) {
+        throw new Error('Failed to fetch Polymarket opportunities')
+      }
+      const data = await response.json()
+      setPolymarketOpportunities(data.opportunities || [])
+      setLastUpdate(new Date())
+      setPolymarketLoading(false)
+    } catch (err) {
+      console.error('Error fetching Polymarket opportunities:', err)
+      setError('Failed to load Polymarket opportunities. Please try again.')
+      setPolymarketLoading(false)
+    }
+  }
+
   useEffect(() => {
-    // Initial fetch
+    // Initial fetch for both types
     fetchOpportunities()
+    fetchPolymarketOpportunities()
 
     // Set up auto-refresh every 15 seconds
     const interval = setInterval(() => {
       fetchOpportunities()
+      fetchPolymarketOpportunities()
     }, 15000)
 
     return () => clearInterval(interval)
@@ -55,20 +81,44 @@ export default function Home() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">Forkboard</h1>
           <p className="text-dark-text-muted">
-            Arbitrage Scanner for Polymarket & Kalshi
+            Trading Strategies for Polymarket
           </p>
+        </div>
+
+        {/* Tabs */}
+        <div className="mb-6 flex gap-2 border-b border-dark-border">
+          <button
+            onClick={() => setActiveTab('polymarket-only')}
+            className={`px-4 py-2 font-medium transition-colors ${
+              activeTab === 'polymarket-only'
+                ? 'text-blue-500 border-b-2 border-blue-500'
+                : 'text-dark-text-muted hover:text-dark-text'
+            }`}
+          >
+            Polymarket Strategies
+          </button>
+          <button
+            onClick={() => setActiveTab('cross-platform')}
+            className={`px-4 py-2 font-medium transition-colors ${
+              activeTab === 'cross-platform'
+                ? 'text-blue-500 border-b-2 border-blue-500'
+                : 'text-dark-text-muted hover:text-dark-text'
+            }`}
+          >
+            Cross-Platform Arbitrage
+          </button>
         </div>
 
         {/* Status Bar */}
         <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
-            {loading && (
+            {(loading || polymarketLoading) && (
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-sm text-dark-text-muted">Loading markets...</span>
               </div>
             )}
-            {!loading && lastUpdate && (
+            {!loading && !polymarketLoading && lastUpdate && (
               <div className="text-sm text-dark-text-muted">
                 Last updated: {formatTime(lastUpdate)}
               </div>
@@ -78,16 +128,52 @@ export default function Home() {
             )}
           </div>
           <button
-            onClick={fetchOpportunities}
-            disabled={loading}
+            onClick={() => {
+              if (activeTab === 'polymarket-only') {
+                fetchPolymarketOpportunities()
+              } else {
+                fetchOpportunities()
+              }
+            }}
+            disabled={loading || polymarketLoading}
             className="px-4 py-2 bg-dark-surface border border-dark-border rounded hover:bg-dark-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
-            {loading ? 'Refreshing...' : 'Refresh Now'}
+            {(loading || polymarketLoading) ? 'Refreshing...' : 'Refresh Now'}
           </button>
         </div>
 
         {/* Stats */}
-        {opportunities.length > 0 && (
+        {activeTab === 'polymarket-only' && polymarketOpportunities.length > 0 && (
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
+              <div className="text-sm text-dark-text-muted mb-1">Opportunities</div>
+              <div className="text-2xl font-bold text-dark-text">{polymarketOpportunities.length}</div>
+            </div>
+            <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
+              <div className="text-sm text-dark-text-muted mb-1">Best Profit</div>
+              <div className="text-2xl font-bold text-green-500">
+                +{polymarketOpportunities[0]?.profitPercent.toFixed(2)}%
+              </div>
+            </div>
+            <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
+              <div className="text-sm text-dark-text-muted mb-1">Avg Profit</div>
+              <div className="text-2xl font-bold text-dark-text">
+                +{(
+                  polymarketOpportunities.reduce((sum, opp) => sum + opp.profitPercent, 0) /
+                  polymarketOpportunities.length
+                ).toFixed(2)}%
+              </div>
+            </div>
+            <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
+              <div className="text-sm text-dark-text-muted mb-1">Strategies</div>
+              <div className="text-2xl font-bold text-dark-text">
+                {new Set(polymarketOpportunities.map(o => o.strategy)).size}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'cross-platform' && opportunities.length > 0 && (
           <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-dark-surface border border-dark-border rounded-lg p-4">
               <div className="text-sm text-dark-text-muted mb-1">Opportunities Found</div>
@@ -114,19 +200,35 @@ export default function Home() {
         {/* Opportunities Table */}
         <div className="bg-dark-surface border border-dark-border rounded-lg overflow-hidden">
           <div className="p-4 border-b border-dark-border">
-            <h2 className="text-xl font-semibold">Arbitrage Opportunities</h2>
+            <h2 className="text-xl font-semibold">
+              {activeTab === 'polymarket-only' ? 'Polymarket Trading Strategies' : 'Cross-Platform Arbitrage Opportunities'}
+            </h2>
             <p className="text-sm text-dark-text-muted mt-1">
-              Markets are automatically refreshed every 15 seconds
+              {activeTab === 'polymarket-only' 
+                ? 'Spread trading, Yes/No arbitrage, and market making opportunities on Polymarket'
+                : 'Arbitrage opportunities between Polymarket and Kalshi'}
+              {' • '}Markets are automatically refreshed every 15 seconds
             </p>
           </div>
           <div className="p-4">
-            {loading && opportunities.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-dark-text-muted">Scanning markets...</p>
-              </div>
+            {activeTab === 'polymarket-only' ? (
+              polymarketLoading && polymarketOpportunities.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-dark-text-muted">Scanning Polymarket markets...</p>
+                </div>
+              ) : (
+                <PolymarketOpportunitiesTable opportunities={polymarketOpportunities} />
+              )
             ) : (
-              <OpportunitiesTable opportunities={opportunities} />
+              loading && opportunities.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-dark-text-muted">Scanning markets...</p>
+                </div>
+              ) : (
+                <OpportunitiesTable opportunities={opportunities} />
+              )
             )}
           </div>
         </div>
@@ -134,18 +236,14 @@ export default function Home() {
         {/* Footer */}
         <div className="mt-8 text-center text-sm text-dark-text-muted">
           <p>
-            Forkboard scans binary markets from{' '}
+            Forkboard provides trading strategies for{' '}
             <a href="https://polymarket.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
               Polymarket
-            </a>{' '}
-            and{' '}
-            <a href="https://kalshi.com" target="_blank" rel="noopener noreferrer" className="text-purple-500 hover:underline">
-              Kalshi
             </a>
-            {' '}for arbitrage opportunities.
+            {' '}including spread trading, Yes/No arbitrage, and market making.
           </p>
           <p className="mt-2">
-            Fees: Kalshi 0.7% • Polymarket 2% on winnings
+            Polymarket fees: 2% on winnings • Minimum liquidity: $1,000
           </p>
         </div>
       </div>

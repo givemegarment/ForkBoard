@@ -3,12 +3,16 @@ import { fetchPolymarketMarkets } from '@/lib/polymarket'
 import { fetchKalshiMarkets } from '@/lib/kalshi'
 import { matchMarkets } from '@/lib/matching'
 import { calculateArbitrage } from '@/lib/arbitrage'
+import { initPolymarketClient } from '@/lib/polymarket-client'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export async function GET() {
   try {
+    // Initialize Polymarket client if not already done
+    await initPolymarketClient()
+
     // Fetch markets from both platforms in parallel
     const [polymarketMarkets, kalshiMarkets] = await Promise.all([
       fetchPolymarketMarkets(),
